@@ -1,0 +1,8 @@
+site maps.iteabag.org
+  server iteabag.org
+  remote www
+  local ~/path/to/git/repo/www
+  username mapsproject
+  password stehtInDerMail
+  
+  

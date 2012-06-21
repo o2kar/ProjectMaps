@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="de">
+	<head>
+	<title>Maps</title>
+	<meta charset="UTF-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=Edge,chrome=1">
+	<style>
+		body{
+			overflow: hidden;
+			margin: 0px;
+			padding: 0px;
+			font-family: Verdana;
+			background-color: rgb(240,240,240);
+			
+		}
+		#zoomin{
+			position: fixed;
+			top: 10px;
+			right: 10px;
+		}
+		#zoomout{
+			position: fixed;
+			top: 70px;
+			right: 10px;
+		}
+		.zoombutton{
+			width: 50px;
+			height: 50px;
+			z-index: 1;
+			background-color: lightskyblue;
+			border: none;
+			color: white;
+			font-size: 25px;
+		}
+		#info{
+			position: fixed;
+			bottom: 0;
+			right: 0;
+			z-index: 2;
+			padding-right: 20px;
+			padding-left: 10px;
+			background-color: black;
+			opacity: 0.5;
+			-ms-filter: "progid:DXImageTransform.Microsoft.Alpha(Opacity=50)";
+			color: white;
+			border-top-left-radius: 5px;
+		}
+		#browserunsupportedbg{
+			position: fixed;
+			bottom: 0;
+			right: 0;
+			z-index: 2;
+			background-color: black;
+			opacity: 0.5;
+			-ms-filter: "progid:DXImageTransform.Microsoft.Alpha(Opacity=50)";
+			color: white;
+			width:100%;
+			height: 100%;
+			z-index: 10;
+		}
+		#browserunsupporteddialog{
+			top: 25%;
+			left: 25%;
+			width: 50%;
+			height: 40%;
+		}
+		#closebrowserunsupporteddialog{
+			top: 65%;
+			left: 25%;
+			width: 50%;
+			height: 10%;
+		}
+		.popup{
+			position: fixed;
+			z-index: 2;
+			background-color: #EEEEEE;
+			color: black;
+			z-index: 11;
+		
+		}
+		.popup button{
+			background-color: gray;
+			border: none;
+			color: white;
+			font-size: 25px;
+			cursor:pointer;
+		}
+		#c{
+			position: absolute;
+			top: 0;
+			bottom: 0;
+		}
+		#cdiv{
+			position: absolute;
+			top: 0;
+			bottom: 0;
+		}
+		.grabbable{
+			cursor:grab;
+			cursor:-moz-grab;
+			cursor:-webkit-grab;
+		}
+		.grabbing {
+			cursor: grabbing;
+			cursor:-moz-grabbing;
+			cursor:-webkit-grabbing;
+		}
+		
+	</style>
+	<!--[if IE]><script src="excanvas.js"></script><![endif]-->
+	<script type="text/javascript" src="jquery-1.7.2.js"></script>
+	<script type="text/javascript" src="jquery.mousewheel.js"></script>
+	<script>
+	//Data
+	var nodes = {}
+	var motorways = ["motorway", "motorway_link"];
+	var primaryRoads = ["trunk", "trunk_link", "primary", "primary_link"];
+	var secondaryRoads =  ["secondary", "secondary_link"];
+	var tertiaryRoads = ["tertiary", "tertiary_link"];
+	var smallRoads = ["road", "track", "service", "unclassified", "residential", "living_street","pedestrian"];
+	
+	
+	var mapStyle = {
+		background: "rgb(240,240,240)",
+		ways: {
+			motorway: {
+				color: "rgb(65,105,225)",//Koenigsblau
+				borderColor: "rgb(255,255,255)",//weiss
+				simpleColor: "rgb(65,105,225)",//Koenigsblau
+				width: 4
+			},
+			primaryRoad: {
+				color: "rgb(220,20,60)",//Crimson
+				borderColor: "rgb(128,128,128)",
+				simpleColor: "rgb(220,20,60)",//Crimson
+				width: 3
+			},
+			secondaryRoad: {
+				color: "rgb(255,128,0)",//Orange
+				borderColor: "rgb(128,128,128)",
+				simpleColor: "rgb(255,128,0)",//Orange
+				width: 3
+			},
+			tertiaryRoad: {
+				color: "rgb(255,128,0)",//Orange
+				borderColor: "rgb(128,128,128)",
+				simpleColor: "rgb(255,128,0)",//Orange
+				width: 3
+			},
+			smallRoad: {
+				color: "rgb(255,255,255)",//weiss
+				borderColor: "rgb(128,128,128)",
+				simpleColor: "rgb(128,128,128)",
+				width: 1
+			}
+		},
+		streetNameColor: "Navy"
+	};
+	
+	var renderCounter = 0;
+	
+	var smallWays = {};
+	var ways = {};
+	
+	var s11 = ["37742835","143966326","143966324","35159966","35159965","34238077","137313164","34238573","34238572","20888746","133656511","147127270","147127269","133266597","14306485","60127458","60127455","60127456","60127457","28170581","28170579","25745684","156332529","156332528","58153097","58153128","156332907","156339166","156993412","160104875","80954834","110085308","110085301","122386407","80954836","157318868","157318867","75869049","75869041","75869054","150386146","150824850","150824859","150824861","150824867","150824862","150824851","150386059","150385897","150385791","51351570","150385803","150385901","150386034","150385992","150386143","150385903","97218664","150939178","150939199","150939183","150939176","160625672","160625673","152908950","152908953","161467630","161467632","161467636","161467629","8032797","161467635","122391558","132319173","158927039","158722489","158925190","98243058","98243059","8032799","8044601","58153099","152923739","76858532","4242974","152925463","152925461","122391547","58153107","58153091","8118726","161912147","4304825","8115268","8115269"];
+	
+	
+	//Kartendimensionen und Position
+	var minLat = 0;
+	var maxLat = 0;
+	var minLon = 0;
+	var maxLon = 0;
+	var scale = 0;
+	var xCScale = 1.52;
+	var zoom = 1.0;
+	var viewportX = 0;
+	var viewportY = 0;
+	
+	//Canvas-Daten
+	var cvs;
+	var cvsdiv;
+	var canvasWidth;
+	var canvasHeight;
+	var ctx = null;
+	var backgroundStyle = "rgb(240,240,240)";
+	//var renderPendingBackground = null;
+	//var useRenderPendingBackground = false;
+	var renderingRequested = false;
+	
+	//EventHandler-Daten
+	var mouseDown=false;
+	var mouseDownX=0;
+	var mouseDownY=0;
+	var dragDropImageData=null;
+	var initialX=0;
+	var initialY=0;
+	var instaReRender = false;
+	
+	//loggt ohne den Internet Explorer zu aergern
+	function log(w){
+		if (console && console.log){//(!($.browser.msie)){
+			console.log(w);
+		}
+	}
+	
+	//Passt die Groesse des Canvas so an, dass er das ganze Dokument einnimmt
+	function expandCanvas(){
+		$('#c').attr({height: $(window).height(), width: $(window).width()});
+	}
+	
+	//initialisiert scrolling
+	function startMovement(e){
+		mouseDownX=e.pageX;
+		mouseDownY=e.pageY;
+		mouseDown=true;
+		initialX=e.pageX;
+		initialY=e.pageY;
+	}
+	
+	//scrollt
+	function scrollMap(e){
+		var xOff = (e.pageX-mouseDownX);
+		var yOff = (e.pageY-mouseDownY);
+		viewportX-=xOff;
+		viewportY+=yOff;
+		mouseDownX=e.pageX;
+		mouseDownY=e.pageY;
+		if (instaReRender){
+			renderMap();
+		}
+		else{
+			mC(-(initialX-e.pageX),-(initialY-e.pageY));
+		}
+	
+	}
+	
+	//Scrollt durch Bewegung des Canvas
+	function mC(x,y){
+		cvsdiv.css('top',String(y)+"px");
+		cvsdiv.css('left',String(x)+"px");
+	}
+	
+	function asynchronousMapRenderer(){
+		if (renderingRequested){
+			renderingRequested = false;
+			renderMap();
+		}
+		setTimeout(asynchronousMapRenderer,2000);
+	}
+	
+	//Initialisiert EventHandler für Bewegung (Drag'n Drop) und Zoom.
+	function initHandlers(){
+		$('#c').mousedown(function(e){
+			cvs.removeClass("grabbable").addClass("grabbing");
+			startMovement(e);
+		});
+		$('#c').dblclick(function(e){
+			e.preventDefault();
+			changeZoom(zoom*2);
+			/*viewportX=e.pageX;
+			viewportY=e.pageY;*/
+		});
+		$('#c').mousewheel(function(e, delta, deltaX, deltaY) {
+			e.preventDefault();
+			changeZoom(zoom*Math.pow(2,deltaY));
+		});
+		$('#c').mousemove(function(e){
+			if (mouseDown){
+				scrollMap(e);
+			}
+		});
+		$('#c').bind('touchstart',function(e){
+			e.preventDefault();
+			var touch = e.originalEvent.touches[0] || e.originalEvent.changedTouches[0];
+			startMovement(touch);
+		});
+		$('#c').bind('touchmove',function(e){
+			e.preventDefault();
+			var touch = e.originalEvent.touches[0] || e.originalEvent.changedTouches[0];
+			scrollMap(touch);
+		});
+		$('#c').bind('touchend',function(e){
+			cvsdiv.css('top','0');
+			cvsdiv.css('left','0');
+			e.preventDefault();
+			mouseDown=false;
+			renderMap();
+		});
+		$('#c').bind('touchcancel',function(e){
+			e.preventDefault();
+			cvsdiv.css('top','0');
+			cvsdiv.css('left','0');
+			mouseDown=false;
+			renderMap();
+		});
+		
+		$('#c').mouseup(function(e){
+			mouseDown=false;
+			cvsdiv.css('top','0');
+			cvsdiv.css('left','0');
+			cvs.removeClass("grabbing").addClass("grabbable");
+			renderMap();
+		});
+		$('#c').mouseout(function(e){
+			/*if (mouseDown){
+				mouseDown=false;
+				cvsdiv.css('top','0');
+				cvsdiv.css('left','0');
+				cvs.removeClass("grabbing").addClass("grabbable");
+				renderMap();
+			}*/
+		});
+		$(window).bind('resize', function(e){
+			expandCanvas();
+			updateCanvasDimensions();
+			renderMap();
+		});
+		$('#zoomin').click(function(e){
+			changeZoom(zoom*2);
+		});
+		$('#zoomout').click(function(e){
+			changeZoom(zoom*0.5);
+		});
+	}
+	
+	//berechnet die Anfangsscalierung, sodass die ganze Karte auf den Canvas passt
+	function computeScale(height,width){
+		var cW = canvasWidth;//$('#c').attr('width');
+		var cH = canvasHeight;//$('#c').attr('height');
+		var xScale = cW / width;
+		var yScale = cH / (height*1.52);
+		scale = Math.min(xScale, yScale);
+		//console.log([cW,cH]);
+	}
+	
+	//aktualisiert die Informationen über die Canvasgröße
+	function updateCanvasDimensions(){
+		canvasWidth = $('#c').attr('width');
+		canvasHeight = $('#c').attr('height');
+	}
+	
+	//Zentriert den Viewport in der Mitte der Karte
+	function centerViewport(){
+		var cW = $('#c').attr('width');
+		var cH = $('#c').attr('height');
+		viewportX = cW / 2;
+		viewportY = cH / 2;
+	}
+	
+	//Läd die OSM-Daten per Ajax und parst sie
+	function getNewXML(filename){
+		$.ajax({
+			url: filename,
+			dataType: "xml",
+			success: function(xml) {
+				log("transfer complete (new)");
+				
+				$(xml).find('bounds').each(function(){
+					minLat = parseFloat($(this).attr('minlat'));
+					maxLat = parseFloat($(this).attr('maxlat'));
+					minLon = parseFloat($(this).attr('minlon'));
+					maxLon = parseFloat($(this).attr('maxlon'));
+				});
+				
+				computeScale(maxLat - minLat, maxLon - minLon);
+				centerViewport();
+				
+				$(xml).find('way').each(function(){
+					var wayID = $(this).attr('id');
+					var wayNodes = [];
+					$(this).find('node').each(function(){
+						wayNodes.push({
+							lat: parseFloat($(this).attr('lat')),
+							lon: parseFloat($(this).attr('lon'))
+						});
+					});
+					var name = $(this).attr('name');
+					var wayType = $(this).attr('type');
+					
+					var mapWayType = "";
+					if ($.inArray(wayType,motorways) != -1){
+						mapWayType = "motorway";
+					}
+					else if ($.inArray(wayType,primaryRoads) != -1){
+						mapWayType = "primaryRoad";
+					}
+					else if ($.inArray(wayType,secondaryRoads) != -1){
+						mapWayType = "secondaryRoad";
+					}
+					else if ($.inArray(wayType,tertiaryRoads) != -1){
+						mapWayType = "tertiaryRoad";
+					}
+					else if ($.inArray(wayType,smallRoads) != -1){
+						mapWayType = "smallRoad";
+					}
+					else{
+						//return;
+						//log("Waytype unknown: "+wayType);
+						mapWayType = "smallRoad";
+					}
+					
+					if (mapWayType=="smallRoad"){
+						smallWays[wayID] = {
+							name: name,
+							type: mapWayType,
+							nd: wayNodes
+						};
+					}
+					else{
+						ways[wayID] = {
+							name: name,
+							type: mapWayType,
+							nd: wayNodes
+						};
+					}
+				});
+				log("xml parsing complete");
+				log("invoked via rcp");
+				renderMap();
+			}
+		});
+	}
+	
+	
+	
+	//Läd die OSM-Daten per Ajax und parst sie
+	function getXML(filename){
+		$.ajax({
+			url: filename,
+			dataType: "xml",
+			success: function(xml) {
+				log("transfer complete");
+				
+				$(xml).find('bounds').each(function(){
+					minLat = parseFloat($(this).attr('minlat'));
+					maxLat = parseFloat($(this).attr('maxlat'));
+					minLon = parseFloat($(this).attr('minlon'));
+					maxLon = parseFloat($(this).attr('maxlon'));
+				});
+				
+				computeScale(maxLat - minLat, maxLon - minLon);
+				centerViewport();
+				
+				$(xml).find('node').each(function(){
+					nodes[$(this).attr('id')]={
+						lat: parseFloat($(this).attr('lat')),
+						lon: parseFloat($(this).attr('lon'))
+					};
+				});
+				$(xml).find('way').each(function(){
+					var wayID = $(this).attr('id');
+					var wayNodes = [];
+					$(this).find('nd').each(function(){
+						var ref = $(this).attr('ref');
+						if (ref){
+							wayNodes.push(nodes[ref]);
+						}
+					});
+					var name = "";
+					$(this).find('tag').each(function(){
+						if ($(this).attr('k')=='name'){
+							name = $(this).attr('v');
+						}
+					});
+					var wayType = "";
+					$(this).find('tag').each(function(){
+						if ($(this).attr('k')=='highway'){
+							wayType = $(this).attr('v');
+						}
+					});
+					
+					
+					var mapWayType = "";
+					if ($.inArray(wayType,motorways) != -1){
+						mapWayType = "motorway";
+					}
+					else if ($.inArray(wayType,primaryRoads) != -1){
+						mapWayType = "primaryRoad";
+					}
+					else if ($.inArray(wayType,secondaryRoads) != -1){
+						mapWayType = "secondaryRoad";
+					}
+					else if ($.inArray(wayType,tertiaryRoads) != -1){
+						mapWayType = "tertiaryRoad";
+					}
+					else if ($.inArray(wayType,smallRoads) != -1){
+						mapWayType = "smallRoad";
+					}
+					else{
+						return;
+						//log("Waytype unknown: "+wayType);
+					}
+					
+					if (mapWayType=="smallRoad"){
+						smallWays[wayID] = {
+							name: name,
+							type: mapWayType,
+							nd: wayNodes
+						};
+					}
+					else{
+						ways[wayID] = {
+							name: name,
+							type: mapWayType,
+							nd: wayNodes
+						};
+					}
+				});
+				log("xml parsing complete");
+				log("invoked via rcp");
+				renderMap();
+			}
+		});
+	}
+	
+	
+	
+	//Rendert die Straßen und Straßennamen
+	
+	function drawTramLine(way,szColor){
+		ctx.beginPath();
+		var width = Math.floor(mapStyle.ways[way.type].width*zoom);
+		if (width<1){
+			width=1;
+		}
+		ctx.strokeStyle = szColor;
+		ctx.lineWidth = width;
+		$.each(way.nd, function(index, node) {
+			var tY = canvasHeight-Math.round((node.lat-minLat)*scale*xCScale*zoom+(canvasHeight/2)-viewportY);
+			var tX = Math.round((node.lon-minLon)*scale*zoom+(canvasWidth/2)-viewportX);
+			
+			if (index == 0){
+				ctx.moveTo(tX,tY);
+			}
+			else{
+				ctx.lineTo(tX,tY);
+			}
+		});
+		ctx.stroke();
+		ctx.closePath();
+	}
+	
+	function drawWay(way,fBorder){
+		ctx.beginPath();
+		var width = Math.floor(mapStyle.ways[way.type].width*zoom);
+		if (width<1){
+			width=1;
+		}
+		if (width>=3){
+			if (fBorder){
+				ctx.strokeStyle = mapStyle.ways[way.type].borderColor;
+			}
+			else{
+				ctx.strokeStyle = mapStyle.ways[way.type].color;
+				width -= 2;
+			}
+		}
+		else{
+			if (fBorder){
+				ctx.strokeStyle = mapStyle.ways[way.type].simpleColor;
+			}
+			else{
+				return;
+			}
+		}
+		ctx.lineWidth = width;
+		$.each(way.nd, function(index, node) {
+			var tY = canvasHeight-Math.round((node.lat-minLat)*scale*xCScale*zoom+(canvasHeight/2)-viewportY);
+			var tX = Math.round((node.lon-minLon)*scale*zoom+(canvasWidth/2)-viewportX);
+			
+			if (index == 0){
+				ctx.moveTo(tX,tY);
+			}
+			else{
+				ctx.lineTo(tX,tY);
+			}
+		});
+		ctx.stroke();
+		ctx.closePath();
+	}
+	
+	function renderMap(){
+		log("render-start ("+renderCounter+++")");
+		updateCanvasDimensions();
+		ctx.fillStyle = backgroundStyle;
+		ctx.fillRect (0, 0,canvasWidth, canvasHeight);
+		
+		/*
+		ctx.fillStyle = mapStyle.streetNameColor;
+		ctx.lineWidth   = 2*zoom;
+		ctx.font = "8px sans-serif";*/
+		log("render-smallWays (Border)");
+		$.each(smallWays, function(key, way) {
+			
+			drawWay(way,true);
+		});
+		log("render-Ways (Border)");
+		$.each(ways, function(key, way) {
+			
+			drawWay(way,true);
+		});
+		log("render-smallWays (filling)");
+		$.each(smallWays, function(key, way) {
+			
+			drawWay(way,false);
+		});
+		log("render-Ways (filling)");
+		$.each(ways, function(key, way) {
+			
+			drawWay(way,false);
+		});
+		/*$.each(s11, function(index, wayID) {
+			
+			if (ways[wayID])
+				drawTramLine(ways[wayID],"green");
+			if (smallWays[wayID])
+				drawTramLine(smallWays[wayID],"green");
+		});*/
+		log("render-stop");
+	}
+	
+	
+	//Initialisiert die Variablen
+	function init(){
+		cvs = $('#c');
+		cvsdiv = $('#cdiv');
+		expandCanvas();
+		updateCanvasDimensions();
+		ctx = document.getElementById('c').getContext('2d');
+		//initRPBackground();
+		asynchronousMapRenderer();
+	}
+	
+	//Ändert den Zoom und passt die viewportPosition an
+	function changeZoom(newZoom){
+		viewportX = (viewportX / zoom) * newZoom;
+		viewportY = (viewportY / zoom) * newZoom;
+		zoom = newZoom;
+		renderMap();
+	}
+	</script>
+	<script>
+	//Loslegen, sobald dass Dokument fertig geladen ist.
+	$(document).ready(function () {
+		init();
+		getNewXML('./wayNodes.php?latMin=48.9859&latMax=49.039&lonMin=8.3617&lonMax=8.4618');
+		
+		initHandlers();
+	});
+	
+	</script>
+	</head>
+	<body>
+		<div>
+			<div id="cdiv">
+				<canvas id="c" width="800" height="600" class="grabbable"></canvas>
+			</div>
+			<button id="zoomin" class="zoombutton" type="button">+</button>
+			<button id="zoomout" class="zoombutton" type="button">-</button>
+			<div id="info">Projekt Maps &nbsp; Kartenquelle: OpenStreetMap</div>
+		</div>
+		<!--[if lte IE 8]>
+			<div id="browserunsupportedbg">
+			</div>
+			<div id="browserunsupporteddialog" class="popup">
+					
+					<center><h1>Ihr Browser wird nicht unterst&uuml;tzt!</h1></center>
+					<div style="padding-left: 5%;">
+						Die Seite funktioniert erst ab dem Internet-Explorer der Version 9.<br>
+						M&ouml;gliche Schritte:
+						<ul>
+							<li>Installieren Sie die neuste Version des Internet-Explorers (ab Windows Vista)</li>
+							<li>Nutzen Sie einen anderen Browser</li>
+							<li>Installieren Sie Google Chrome Frame</li>
+						</ul>
+					</div>
+			</div>
+		<![endif]-->
+		<!--[if IE 8]>
+		<div id="closebrowserunsupporteddialog" class="popup">
+			<center>
+				<button id="closeie8" onclick="$('.popup').hide();$('#browserunsupportedbg').hide();void(0);">Trotzdem versuchen</button>
+			</center>
+		<![endif]-->
+	</body>
+</html>

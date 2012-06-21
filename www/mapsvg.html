@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="de">
+	<head>
+	<meta charset="UTF-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=Edge,chrome=1">
+	<title>Maps</title>
+	<style>
+	body{
+			overflow: hidden;
+			margin: 0px;
+			padding: 0px;
+			font-family: Verdana;
+			background-color: rgb(240,240,240);
+			
+		}
+		#mapdiv{
+			margin: 0px;
+			padding: 0px;
+			overflow: hidden;
+			width: 100%;
+			height: 100%;
+			position: absolute;
+			top: 0;
+			left: 0;
+		}
+		.grabbing {
+			cursor: grabbing;
+			cursor:-moz-grabbing;
+			cursor:-webkit-grabbing;
+		}
+		#zoomin{
+			position: fixed;
+			top: 10px;
+			right: 10px;
+		}
+		#zoomout{
+			position: fixed;
+			top: 70px;
+			right: 10px;
+		}
+		.zoombutton{
+			width: 50px;
+			height: 50px;
+			z-index: 1;
+			background-color: lightskyblue;
+			border: none;
+			color: white;
+			font-size: 25px;
+		}
+	</style>
+	<script type="text/javascript" src="jquery-1.7.2.js"></script>
+	<script type="text/javascript" src="jquery.mousewheel.js"></script>
+	<script>
+	function loadXMLDoc(dname) {
+		if (window.XMLHttpRequest){
+			xhttp=new XMLHttpRequest();
+		}
+		else{
+			xhttp=new ActiveXObject("Microsoft.XMLHTTP");
+		}
+		xhttp.open("GET",dname,false);
+		xhttp.send("");
+		return xhttp.responseXML;
+	}
+	
+	function displayMap(){
+		xml=loadXMLDoc("./wayNodes.php?latMin=48.9859&latMax=49.039&lonMin=8.3617&lonMax=8.4618&factor=100");
+		xsl=loadXMLDoc("map.xsl");
+		// code for IE
+		if (window.ActiveXObject){
+			ex=xml.transformNode(xsl);
+			document.getElementById("mapdiv").innerHTML=ex;
+		}
+		// code for Mozilla, Firefox, Opera, etc.
+		else if (document.implementation && document.implementation.createDocument){
+			xsltProcessor=new XSLTProcessor();
+			xsltProcessor.importStylesheet(xsl);
+			resultDocument = xsltProcessor.transformToFragment(xml,document);
+			document.getElementById("mapdiv").appendChild(resultDocument);
+		}
+		parseXSLData();
+		initHandlers();
+		updateSVGSize();
+		applyStyle(mapStyle);
+	}
+	</script>
+	<script>
+		//EventHandler-Daten
+		var mouseDown=false;
+		var mouseDownX=0;
+		var mouseDownY=0;
+		var initialX=0;
+		var initialY=0;
+		var scale ={x:400,y:-608};
+		var eventsBlocked = false;
+		var initialScroll = {
+			top: 0,
+			left: 0
+		};
+		mouseDownWhenOut = false;
+		
+		//Map-Daten
+		var translation = {};
+		var bounds = {};
+		var streetNames = {};
+		var streetTypes = {};
+		
+		var simpleWayTypes = {
+			motorway: ["motorway", "motorway_link"],
+			primaryRoad: ["trunk", "trunk_link", "primary", "primary_link"],
+			secondaryRoad: ["secondary", "secondary_link"],
+			tertiaryRoad: ["tertiary", "tertiary_link"],
+			smallRoad: ["road", "track", "service", "unclassified", "residential", "living_street","pedestrian"]
+		}
+		
+		var mapStyle = {
+			background: "rgb(240,240,240)",
+			ways: {
+				motorway: {
+					color: "rgb(65,105,225)",//Koenigsblau
+					borderColor: "rgb(255,255,255)",//weiss
+					outerWidth: 0.00800,
+					innerWidth: 0.00600
+				},
+				primaryRoad: {
+					color: "rgb(220,20,60)",//Crimson
+					borderColor: "rgb(128,128,128)",
+					outerWidth: 0.00800,
+					innerWidth: 0.00600
+				},
+				secondaryRoad: {
+					color: "rgb(255,128,0)",//Orange
+					borderColor: "rgb(128,128,128)",
+					outerWidth: 0.00800,
+					innerWidth: 0.00600
+				},
+				tertiaryRoad: {
+					color: "rgb(255,128,0)",//Orange
+					borderColor: "rgb(128,128,128)",
+					outerWidth: 0.00800,
+					innerWidth: 0.00600
+				},
+				smallRoad: {
+					color: "rgb(255,255,255)",//weiss
+					borderColor: "rgb(128,128,128)",
+					outerWidth: 0.00800,
+					innerWidth: 0.00600
+				}
+			},
+			streetNameColor: "Navy"
+		};
+		
+		var zoomFactor = 1.5;
+		
+		var SCROLLTYPES = {
+			NATIVE: 0,
+			TRANSFORM: 1,
+			CSS: 2
+		};
+		var scrollType = SCROLLTYPES.NATIVE;
+		
+		function applyStyle(styleToApply){
+			$.each(streetTypes,function(wayID,wayType){
+				var simpleType = getSimpleWayType(wayType);
+				var outerStyle = "fill:none;stroke:"+styleToApply.ways[simpleType].borderColor+";stroke-width:"+styleToApply.ways[simpleType].outerWidth;
+				var innerStyle = "fill:none;stroke:"+styleToApply.ways[simpleType].color+";stroke-width:"+styleToApply.ways[simpleType].innerWidth;
+				$('#outer'+wayID).attr('style',outerStyle);
+				$('#inner'+wayID).attr('style',innerStyle);
+			});
+		}
+		
+		function getSimpleWayType(rawTypeToFind){
+			var simpleType = "smallRoad";
+			$.each(simpleWayTypes,function(key, simpleTypes){
+				$.each(simpleTypes,function(index, rawType){
+					if (rawType == rawTypeToFind){
+						simpleType=key;
+					}
+				});
+			});
+			return simpleType;
+		}
+		
+		
+		
+		function parseXSLData(){
+			var xslData = JSON.parse($('#initialtranslation').val());
+			translation.x=xslData.translation.x;
+			translation.y=xslData.translation.y;
+			bounds = xslData.bounds;
+			streetNames = xslData.wayNames;
+			streetTypes = xslData.wayTypes;
+			return true;
+		}
+		
+		function updateSVGSize(){
+			var width = Math.floor((bounds.maxlon-bounds.minlon)*Math.abs(scale.x));
+			var height = Math.floor((bounds.maxlat-bounds.minlat)*Math.abs(scale.y));
+			$("#svgelem").attr("width",width);
+			$("#svgelem").attr("height",height);
+			return true;
+		}
+		
+		/*function initStreetNameHandler(){
+			$('polyline').click(function(){
+				console.log("mo");
+				var id = this.attr("id");
+				console.log(streetNames[id]);
+			});
+			return true;
+		}*/
+		
+		//Initialisiert EventHandler für Bewegung (Drag'n Drop) und Zoom.
+		function initHandlers(){
+			//alert('Handlers...');
+			$('#svgelem').mousedown(function(e){
+				//cvs.removeClass("grabbable").addClass("grabbing");
+				startMovement(e);
+			});
+			$('#svgelem').dblclick(function(e){
+				e.preventDefault();
+				//changeZoom(zoom*2);
+				/*viewportX=e.pageX;
+				viewportY=e.pageY;*/
+			});
+			$('#svgelem').mousewheel(function(e, delta, deltaX, deltaY) {
+				e.preventDefault();
+				changeZoom(Math.pow(zoomFactor,deltaY));
+			});
+			$('#svgelem').mousemove(function(e){
+				if (eventsBlocked){
+					eventsBlocked=false;
+					return;
+				}
+				if (mouseDown){
+					scrollMap(e);
+					//console.log(eventsBlocked);
+				}
+			});
+			$('#svgelem').bind('touchstart',function(e){
+				e.preventDefault();
+				var touch = e.originalEvent.touches[0] || e.originalEvent.changedTouches[0];
+				startMovement(touch);
+			});
+			$('#svgelem').bind('touchmove',function(e){
+				e.preventDefault();
+				var touch = e.originalEvent.touches[0] || e.originalEvent.changedTouches[0];
+				scrollMap(touch);
+			});
+			$('#svgelem').bind('touchend',function(e){
+				//cvsdiv.css('top','0');
+				//cvsdiv.css('left','0');
+				e.preventDefault();
+				mouseDown=false;
+				//renderMap();
+			});
+			$('#svgelem').bind('touchcancel',function(e){
+				e.preventDefault();
+				//cvsdiv.css('top','0');
+				//cvsdiv.css('left','0');
+				mouseDown=false;
+				//renderMap();
+			});
+			
+			$('#svgelem').mouseup(function(e){
+				mouseDown=false;
+				//cvsdiv.css('top','0');
+				//cvsdiv.css('left','0');
+				//cvs.removeClass("grabbing").addClass("grabbable");
+				//renderMap();
+			});
+			$('#svgelem').mouseleave(function(e){
+				mouseDown = false;
+				mouseDownWhenOut=mouseDown; 
+			});
+			$('#svgelem').mouseenter(function(e){
+				mouseDown = mouseDownWhenOut; 
+			});
+			/*$(window).bind('resize', function(e){
+				expandCanvas();
+				updateCanvasDimensions();
+				renderMap();
+			});*/
+			$('#zoomin').click(function(e){
+				changeZoom(zoomFactor);
+			});
+			$('#zoomout').click(function(e){
+				changeZoom(1/zoomFactor);
+			});
+		}
+		function startMovement(e){
+			mouseDownX=e.pageX;
+			mouseDownY=e.pageY;
+			mouseDown=true;
+			initialX=e.pageX;
+			initialY=e.pageY;
+			initialScroll.top = $('#mapdiv').scrollTop();
+			initialScroll.left = $('#mapdiv').scrollLeft();
+		}
+		
+		//scrollt
+		function scrollMap(e){
+			e.preventDefault();
+			var xOff = (e.pageX-mouseDownX);
+			var yOff = (e.pageY-mouseDownY);
+			var xcOff = xOff / scale.x;
+			var ycOff = yOff / scale.y;
+			if (scrollType == SCROLLTYPES.TRANSFORM){
+				translation.x+=xcOff;
+				translation.y+=ycOff;
+				//console.log([xOff,yOff]);
+				var transform = $('#svgtransform');
+				
+				transformMap(document.getElementById('svgtransform'),"scale("+scale.x+","+scale.y+") translate("+translation.x+","+translation.y+")");
+			
+				//transform.attr('transform',"scale("+scale.x+","+scale.y+") translate("+tX+","+tY+")");
+				//alert("matrix("+scale.x+",0,0,"+scale.y+","+tX+","+tY+")");
+				//transform.attr('transform',"matrix("+scale.x+",0,0,"+scale.y+","+tX+","+tY+")");
+				mouseDownX=e.pageX;//-xOff;
+				mouseDownY=e.pageY;//-yOff;
+			}
+			else if (scrollType == SCROLLTYPES.NATIVE){
+				eventsBlocked=true;
+				$('#mapdiv').scrollTop(initialScroll.top-yOff);
+				$('#mapdiv').scrollLeft(initialScroll.left-xOff);
+				eventsBlocked=false;
+				mouseDownX=e.pageX-xOff;
+				mouseDownY=e.pageY-yOff;
+			}
+		}
+		
+		function changeZoom(factor){
+			scale.x*=factor;
+			scale.y*=factor;
+			transformMap(document.getElementById('svgtransform'),"scale("+scale.x+","+scale.y+") translate("+translation.x+","+translation.y+")");
+			if (scrollType == SCROLLTYPES.NATIVE){
+				$("#mapdiv").scrollTop(Math.floor($("#mapdiv").scrollTop()*factor));
+				$("#mapdiv").scrollLeft(Math.floor($("#mapdiv").scrollLeft()*factor));
+			}
+		}
+		
+		function transformMap(svgGElement,value){
+			svgGElement.setAttributeNS(null,"transform",value);
+		}
+		
+	</script>
+	</head>
+	<body onload="displayMap()">
+	<div id="mapdiv">
+	
+	</div>
+	<button id="zoomin" class="zoombutton" type="button">+</button>
+	<button id="zoomout" class="zoombutton" type="button">-</button>
+	</body>
+</html>
