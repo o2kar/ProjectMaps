@@ -1,9 +1,0 @@
-/* RailsGuide Karlsruhe CSS Stylesheet  */
-
-#rails-container {
-  width: 340px;
-  min-height: 500px;
-
-  border: solid 1px #c6;
-  border-radius: 5px;
-}
